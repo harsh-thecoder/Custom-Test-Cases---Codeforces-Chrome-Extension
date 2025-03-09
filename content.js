@@ -120,76 +120,111 @@
     }
     
     // Main validation function
-    async function validateTestCase() {
-      console.log("validateTestCase started");
+    // Main validation function
+async function validateTestCase() {
+    console.log("validateTestCase started");
+    
+    try {
+      // Ensure UI exists
+      if (!uiInitialized && !createUI()) {
+        alert('Failed to initialize UI. Please reload the page.');
+        return;
+      }
+      
+      // Get elements
+      const inputElement = getElement('input');
+      const resultElement = getElement('result');
+      const outputElement = getElement('output');
+      
+      if (!inputElement || !resultElement || !outputElement) {
+        uiInitialized = false;
+        if (createUI()) {
+          return validateTestCase(); // Try again with new UI
+        } else {
+          alert('UI elements missing. Please reload the page.');
+          return;
+        }
+      }
+      
+      // Get problem info - IMPORTANT: Do this before trying to use contestId & problemId
+      let { contestId, problemId } = getProblemInfo();
+      console.log("Problem info:", { contestId, problemId });
+      
+      if (!contestId || !problemId) {
+        showStatus("Couldn't determine problem information from URL", true);
+        return;
+      }
+      
+      // Get input
+      const testInput = inputElement.value;
+      if (!testInput || testInput.trim().length === 0) {
+        showStatus("Please enter a valid test input", true);
+        return;
+      }
+      
+      // Process validation
+      showStatus("Finding an accepted solution...");
+      
+      let submissionInfo, sourceCode, result;
       
       try {
-        // Ensure UI exists
-        if (!uiInitialized && !createUI()) {
-          alert('Failed to initialize UI. Please reload the page.');
-          return;
-        }
-        
-        // Get elements
-        const inputElement = getElement('input');
-        const resultElement = getElement('result');
-        const outputElement = getElement('output');
-        
-        if (!inputElement || !resultElement || !outputElement) {
-          uiInitialized = false;
-          if (createUI()) {
-            return validateTestCase(); // Try again with new UI
-          } else {
-            alert('UI elements missing. Please reload the page.');
-            return;
-          }
-        }
-        
-        // Get problem info - IMPORTANT: Do this before trying to use contestId & problemId
-        let { contestId, problemId } = getProblemInfo();
-        console.log("Problem info:", { contestId, problemId });
-        
-        if (!contestId || !problemId) {
-          showStatus("Couldn't determine problem information from URL", true);
-          return;
-        }
-        
-        // Get input
-        const testInput = inputElement.value;
-        if (!testInput || testInput.trim().length === 0) {
-          showStatus("Please enter a valid test input", true);
-          return;
-        }
-        
-        // Process validation
-        showStatus("Finding an accepted solution...");
-        
         // 1. Get submission ID
-        const submissionInfo = await getAcceptedSubmissionInfo(contestId, problemId);
+        submissionInfo = await getAcceptedSubmissionInfo(contestId, problemId);
         
         // 2. Get source code
         showStatus(`Fetching solution code (Submission #${submissionInfo.submissionId})...`);
-        const sourceCode = await getSubmissionSourceCode(contestId, submissionInfo.submissionId);
+        sourceCode = await getSubmissionSourceCode(contestId, submissionInfo.submissionId);
         
         // 3. Execute code
         showStatus(`Running solution with your input (Language: ${submissionInfo.programmingLanguage})...`);
-        const result = await executeCode(sourceCode, submissionInfo.language, testInput);
+        result = await executeCode(sourceCode, submissionInfo.language, testInput);
         
-        // 4. Display result
+        // 4. Display result - MOVED INTO THIS TRY BLOCK
         if (outputElement) {
-          outputElement.textContent = typeof result === 'object' ? 
-            (result.output || JSON.stringify(result, null, 2)) : 
-            (result || 'No output returned');
-          resultElement.classList.add('show');
-        } else {
+            console.log("Received result:", result);
+            
+            // Check if there's an error flag or if the output contains error/warning messages
+            const isError = result.error || 
+                           (typeof result.output === 'string' && 
+                            (result.output.includes("error:") || 
+                             result.output.includes("warning:")));
+            
+            // Format the output with syntax highlighting if it contains errors/warnings
+            if (isError && typeof result.output === 'string') {
+              // Style the output to highlight errors and warnings
+              const formattedOutput = result.output
+                .replace(/error:/g, '<span class="error-text">error:</span>')
+                .replace(/warning:/g, '<span class="warning-text">warning:</span>')
+                .replace(/\n/g, '<br>');
+              
+              resultElement.innerHTML = `
+                <div class="validation-result ${isError ? 'with-errors' : ''}">
+                  <div class="result-header">${isError ? 'Compilation Errors/Warnings' : 'Execution Result'}</div>
+                  <div class="result-content">${formattedOutput}</div>
+                </div>
+              `;
+            } else {
+              // Normal output display
+              outputElement.textContent = typeof result === 'object' ? 
+                (result.output || JSON.stringify(result, null, 2)) : 
+                (result || 'No output returned');
+            }
+            
+            resultElement.classList.add('show');
+          } else {
           showStatus('UI error: Output element disappeared', true);
         }
-      } catch (error) {
-        logError('Validation error:', error);
-        console.error("Detailed validation error:", error);
-        showStatus(error.message || 'Unknown error occurred', true);
+      } catch (innerError) {
+        // Handle errors from each step
+        console.error("Step execution error:", innerError);
+        showStatus(`Error: ${innerError.message || 'Unknown error occurred'}`, true);
       }
+    } catch (error) {
+      logError('Validation error:', error);
+      console.error("Detailed validation error:", error);
+      showStatus(error.message || 'Unknown error occurred', true);
     }
+  }
     
     // Get submission info (API first, fallback to page scraping)
     async function getAcceptedSubmissionInfo(contestId, problemId) {

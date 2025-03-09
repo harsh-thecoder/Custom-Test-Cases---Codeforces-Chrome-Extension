@@ -1,60 +1,47 @@
 // background.js
 
-async function diagnoseSubmissionPage(contestId, submissionId) {
-    return new Promise((resolve, reject) => {
-      const submissionUrl = `https://codeforces.com/contest/${contestId}/submission/${submissionId}`;
-      
-      // Create a new tab to load the submission page
-      chrome.tabs.create({ url: submissionUrl, active: true }, tab => {
-        // Wait for the page to load
-        chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
-          if (tabId === tab.id && changeInfo.status === 'complete') {
-            // Remove the listener
-            chrome.tabs.onUpdated.removeListener(listener);
-            
-            // Execute script to analyze the page
-            chrome.scripting.executeScript({
-              target: { tabId: tab.id },
-              function: () => {
-                const diagnostics = {
-                  url: window.location.href,
-                  title: document.title,
-                  elements: {
-                    programSourceText: !!document.getElementById('program-source-text'),
-                    roundboxPre: document.querySelectorAll('.roundbox pre').length,
-                    submitSourceCodePre: document.querySelectorAll('.submitSourceCode pre').length,
-                    aceContent: document.querySelectorAll('.ace_content').length,
-                    prettyprint: document.querySelectorAll('.prettyprint').length,
-                    sourceElements: Array.from(document.querySelectorAll('*'))
-                      .filter(elem => elem.className && elem.className.includes && 
-                          (elem.className.includes('source') || (elem.id && elem.id.includes('source')))).length,
-                    submissionDivs: Array.from(document.querySelectorAll('div[id^="submission-"]')).length
-                  },
-                  html: document.documentElement.innerHTML.substring(0, 1000) + '...' // First 1000 chars of HTML
-                };
-                
-                return diagnostics;
-              }
-            }, results => {
-              // We don't close the tab here so you can inspect it manually
-              
-              if (chrome.runtime.lastError) {
-                reject(new Error(`Script execution error: ${chrome.runtime.lastError.message}`));
-                return;
-              }
-              
-              const diagnostics = results[0]?.result;
-              if (!diagnostics) {
-                reject(new Error('Could not run diagnostics'));
-                return;
-              }
-              
-              resolve(diagnostics);
-            });
-          }
-        });
-      });
-    });
+// Add this function to your background.js file
+function preprocessCodeForExecution(code, language) {
+    // Make a copy of the original code
+    let processedCode = code;
+    
+    if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
+        // Fix common C++ formatting issues
+        
+        // First handle potentially missing spaces after #include directives
+        processedCode = processedCode.replace(/#include<([^>]+)>/g, '#include <$1>');
+        
+        // Add proper spacing around 'using namespace' declaration
+        processedCode = processedCode.replace(/>#include/g, '>\n#include');
+        processedCode = processedCode.replace(/>using/g, '>\nusing');
+        
+        // Add newlines after semicolons that aren't in quotes or comments
+        processedCode = processedCode.replace(/;(?=([^"']*["'][^"']*["'])*[^"']*$)(?!\/\/)/g, ';\n');
+        
+        // Fix #define statements that are run together
+        processedCode = processedCode.replace(/(#define [^#]+)#define/g, '$1\n#define');
+        
+        // Remove non-standard ASCII characters that might cause compilation issues
+        processedCode = processedCode.replace(/[^\x00-\x7F]+/g, '');
+        
+        // Add newlines around braces for better readability
+        processedCode = processedCode.replace(/{(?=([^"']*["'][^"']*["'])*[^"']*$)/g, '{\n');
+        processedCode = processedCode.replace(/}(?=([^"']*["'][^"']*["'])*[^"']*$)/g, '\n}');
+        
+        // Fix any multiple consecutive newlines
+        processedCode = processedCode.replace(/\n{3,}/g, '\n\n');
+    } else if (language === 'python3' || language === 'python') {
+        // For Python, make sure indentation is proper
+        if (!processedCode.includes('\n') && (processedCode.includes(':') || processedCode.includes('def ') || processedCode.includes('class '))) {
+            // Add newlines after colons not in strings
+            processedCode = processedCode
+                .replace(/:(?=([^"']*["'][^"']*["'])*[^"']*$)/g, ':\n  ')
+                // Add newlines before def or class
+                .replace(/(def |class )/g, '\n$1');
+        }
+    }
+    
+    return processedCode;
 }
 
 // Handle messages from content scripts
@@ -69,7 +56,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
 
     if (request.action === 'executeCode') {
-        console.log("Executing code with JDoodle API");
         executeJdoodleCode(request.code, request.language, request.input)
             .then(result => {
                 console.log("JDoodle execution result:", result);
@@ -106,8 +92,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
   
 // Function to execute code with JDoodle
+// Function to execute code with JDoodle
+// Update this function in your background.js file
 async function executeJdoodleCode(code, language, input) {
     console.log(`Executing ${language} code with JDoodle`);
+    
+    // Preprocess the code for better formatting before sending
+    const processedCode = preprocessCodeForExecution(code, language);
+    
+    // Debug: Log a sample of the processed code
+    console.log("Processed code sample (first 300 chars):", processedCode.substring(0, 300));
     
     const jdoodleEndpoint = 'https://api.jdoodle.com/v1/execute';
     const clientId = 'f5813c60373beca24a2ebab22dfd746'; 
@@ -117,7 +111,7 @@ async function executeJdoodleCode(code, language, input) {
     const requestBody = JSON.stringify({
         clientId, 
         clientSecret, 
-        script: code,
+        script: processedCode,
         language, 
         versionIndex: "0", 
         stdin: input
@@ -138,19 +132,48 @@ async function executeJdoodleCode(code, language, input) {
             
             // Handle different status codes
             if (response.status === 500) {
+                console.error("JDoodle returned 500 error");
                 return { 
                     output: "The code execution service returned an error (500). This may be due to:\n" +
-                            "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input" 
+                            "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input",
+                    error: true 
                 };
             }
             
             if (!response.ok) {
                 const errorText = await response.text();
-                return { output: `Code execution service error (${response.status}): ${errorText}` };
+                console.error("JDoodle error response:", errorText);
+                return { 
+                    output: `Code execution service error (${response.status}): ${errorText}`,
+                    error: true 
+                };
             }
             
             const data = await response.json();
+            
+            console.log("JDoodle raw response:", JSON.stringify(data));
+            
+            // Make sure the 'output' field exists before returning
+            if (!data.output && data.statusCode !== 200) {
+                console.error("JDoodle execution failed:", data);
+                return { 
+                    output: "Error: JDoodle execution failed. Status code: " + (data.statusCode || "unknown"),
+                    error: true 
+                };
+            }
+            
+            // Compile errors should be displayed but marked as errors
+            if (data.output && (data.output.includes("error:") || data.output.includes("warning:"))) {
+                data.error = true;
+            }
+            
+            // Ensure there's always an output property
+            if (!data.output) {
+              data.output = "No output returned from code execution service";
+            }
+            
             return data;
+            
         } catch (fetchError) {
             console.error("Fetch error:", fetchError);
             
@@ -164,24 +187,54 @@ async function executeJdoodleCode(code, language, input) {
                     if (xhr.status >= 200 && xhr.status < 300) {
                         try {
                             const data = JSON.parse(xhr.responseText);
+                            
+                            console.log("JDoodle raw response (XHR):", JSON.stringify(data));
+                            
+                            // Make sure the 'output' field exists before returning
+                            if (!data.output && data.statusCode !== 200) {
+                              resolve({ 
+                                  output: "Error: JDoodle execution failed. Status code: " + (data.statusCode || "unknown"),
+                                  error: true 
+                              });
+                              return;
+                            }
+                            
+                            // Compile errors should be displayed but marked as errors
+                            if (data.output && (data.output.includes("error:") || data.output.includes("warning:"))) {
+                                data.error = true;
+                            }
+                            
+                            // Ensure there's always an output property
+                            if (!data.output) {
+                              data.output = "No output returned from code execution service";
+                            }
+                            
                             resolve(data);
                         } catch (parseError) {
-                            resolve({ output: `Error parsing response: ${xhr.responseText.substring(0, 100)}...` });
+                            resolve({ 
+                                output: `Error parsing response: ${xhr.responseText.substring(0, 100)}...`,
+                                error: true 
+                            });
                         }
                     } else if (xhr.status === 500) {
                         resolve({ 
                             output: "The code execution service returned an error (500). This may be due to:\n" +
-                                    "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input" 
+                                    "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input",
+                            error: true 
                         });
                     } else {
-                        resolve({ output: `Code execution service error (${xhr.status}): ${xhr.responseText}` });
+                        resolve({ 
+                            output: `Code execution service error (${xhr.status}): ${xhr.responseText}`,
+                            error: true 
+                        });
                     }
                 };
                 
                 xhr.onerror = function() {
                     resolve({ 
                         output: "Network error connecting to code execution service. " +
-                                "This might be due to CORS restrictions or network connectivity issues." 
+                                "This might be due to CORS restrictions or network connectivity issues.",
+                        error: true 
                     });
                 };
                 
@@ -193,7 +246,8 @@ async function executeJdoodleCode(code, language, input) {
         return { 
             output: `Network or parsing error: ${error.message}\n` +
                     "This might be due to:\n- Network connectivity issues\n" +
-                    "- API rate limits\n- Invalid API credentials" 
+                    "- API rate limits\n- Invalid API credentials",
+            error: true 
         };
     }
 }
@@ -251,22 +305,7 @@ async function fetchSubmissionCode(contestId, submissionId) {
                     }
                 }
                 
-                // Method 4: Last resort - look for any elements with class containing "source"
-                if (!sourceCode) {
-                    const sourceElements = Array.from(document.querySelectorAll('*'))
-                    .filter(elem => elem.className && elem.className.includes && 
-                            (elem.className.includes('source') || elem.id && elem.id.includes('source')));
-                    
-                    for (const elem of sourceElements) {
-                        if (elem.textContent && elem.textContent.trim().length > 10) { // Basic validation
-                            console.log("Found code using elements with 'source' in class/id");
-                            sourceCode = elem.textContent;
-                            break;
-                        }
-                    }
-                }
-                
-                // Method 5: Check for the Codeforces submission viewer format
+                // Method 4: Check for the Codeforces submission viewer format
                 if (!sourceCode) {
                     // Sometimes Codeforces loads the code with JavaScript into a DIV with a specific ID pattern
                     const submissionDivs = Array.from(document.querySelectorAll('div[id^="submission-"]'));
@@ -279,10 +318,46 @@ async function fetchSubmissionCode(contestId, submissionId) {
                     }
                 }
                 
-                // If we found code, do basic validation to make sure it looks like code
+                // Method 5: Last resort - look for any elements with class containing "source"
+                if (!sourceCode) {
+                    const sourceElements = Array.from(document.querySelectorAll('*'))
+                    .filter(elem => elem.className && typeof elem.className.includes === 'function' && 
+                            (elem.className.includes('source') || (elem.id && elem.id.includes('source'))));
+                    
+                    for (const elem of sourceElements) {
+                        if (elem.textContent && elem.textContent.trim().length > 10) { // Basic validation
+                            console.log("Found code using elements with 'source' in class/id");
+                            sourceCode = elem.textContent;
+                            break;
+                        }
+                    }
+                }
+                
+                // If we found code, do basic validation and cleanup
                 if (sourceCode) {
+                    // Clean up the code
+                    sourceCode = sourceCode.trim();
+                    
+                    // Fix common issues with C++ code
+                    if (sourceCode.includes('#include')) {
+                        // Handle potentially mangled #include statements
+                        sourceCode = sourceCode.replace(/#include<([^>]+)>/g, '#include <$1>');
+                        
+                        // Fix missing newlines between multiple #include statements
+                        sourceCode = sourceCode.replace(/(#include\s*<[^>]+>)(?=#include)/g, '$1\n');
+                        
+                        // Fix missing newlines before using namespace
+                        sourceCode = sourceCode.replace(/(>)(?=\s*using\s+namespace)/g, '$1\n');
+                        
+                        // Fix mangled #define statements
+                        sourceCode = sourceCode.replace(/#define([^#]+)(?=#define)/g, '#define$1\n');
+                    }
+                    
+                    // Remove non-ASCII characters
+                    sourceCode = sourceCode.replace(/[^\x00-\x7F]+/g, '');
+                    
                     // Check if it looks like code (contains common programming constructs)
-                    const codeIndicators = ['(', ')', '{', '}', ';', '=', 'return', 'if', 'for', 'while', 'int', 'void'];
+                    const codeIndicators = ['(', ')', '{', '}', ';', '=', 'return', 'if', 'for', 'while', 'int', 'void', '#include', 'def ', 'class '];
                     const hasCodeIndicators = codeIndicators.some(indicator => sourceCode.includes(indicator));
                     
                     if (hasCodeIndicators) {
@@ -295,14 +370,32 @@ async function fetchSubmissionCode(contestId, submissionId) {
                     console.log("No source code found using any method");
                 }
                 
-                // As a last resort, get the entire page HTML for debugging
-                return '// EXTRACTION_FAILED\n' + document.documentElement.innerHTML.substring(0, 2000) + "...";
+                // As a last resort, look for any large text block
+                const allElements = document.querySelectorAll('*');
+                let longestText = '';
+                
+                for (const elem of allElements) {
+                    if (elem.textContent && elem.textContent.trim().length > longestText.length) {
+                        const text = elem.textContent.trim();
+                        // Check if this might be code
+                        if (text.includes('{') && text.includes('}') && text.includes('(') && text.includes(')')) {
+                            longestText = text;
+                        }
+                    }
+                }
+                
+                if (longestText.length > 50) {
+                    console.log("Falling back to longest text block that might be code");
+                    return longestText;
+                }
+                
+                // Nothing worked, return an error indicator
+                return '// EXTRACTION_FAILED\n// Could not find code in the page';
             } catch (error) {
                 console.error("Error in extractCodeFromPage:", error);
                 return '// ERROR: ' + error.message;
             }
         }
-        
         // Create a new tab to load the submission page
         console.log("Creating tab for submission page");
         chrome.tabs.create({ url: submissionUrl, active: false }, tab => {
