@@ -1,0 +1,76 @@
+.cf-test-validator-container {
+    margin: 20px 0;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    overflow: hidden;
+    background-color: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  
+  .cf-test-validator-header {
+    background-color: #4a76a8;
+    color: white;
+    padding: 10px 15px;
+  }
+  
+  .cf-test-validator-header h3 {
+    margin: 0;
+    font-size: 16px;
+  }
+  
+  .cf-test-validator-body {
+    padding: 15px;
+  }
+  
+  #custom-test-input {
+    width: 100%;
+    min-height: 100px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-family: monospace;
+    resize: vertical;
+  }
+  
+  .cf-test-validator-controls {
+    margin: 10px 0;
+  }
+  
+  #validate-test-btn {
+    background-color: #4a76a8;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  
+  #validate-test-btn:hover {
+    background-color: #3d6293;
+  }
+  
+  .cf-test-validator-result {
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    padding: 10px;
+    background-color: #f9f9f9;
+    display: none;
+  }
+  
+  .cf-test-validator-result.show {
+    display: block;
+  }
+  
+  .cf-test-validator-result pre {
+    margin: 0;
+    white-space: pre-wrap;
+    font-family: monospace;
+  }
+  
+  .error {
+    color: #d9534f;
+  }
+  
+  .loading {
+    color: #5bc0de;
+  }
