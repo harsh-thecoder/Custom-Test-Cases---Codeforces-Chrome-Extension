@@ -1,6 +1,3 @@
-// background.js
-
-// Add this function to your background.js file
 function preprocessCodeForExecution(code, language) {
     // Make a copy of the original code
     let processedCode = code;
@@ -200,9 +197,8 @@ async function executeJdoodleCode(code, language, input) {
             
         } catch (fetchError) {
             console.error("Fetch error:", fetchError);
-            
-            // If fetch fails, try with XMLHttpRequest as a fallback
-            return new Promise((resolve, reject) => {
+             // If fetch fails, try with XMLHttpRequest as a fallback
+             return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', jdoodleEndpoint, true);
                 xhr.setRequestHeader('Content-Type', 'application/json');
