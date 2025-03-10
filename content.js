@@ -1,6 +1,7 @@
 // content.js - Shortened Codeforces Test Validator
 (function() {
-    // At the very top of your content script
+    // At the very top of your content 
+    
     console.log("Codeforces Validator content script loaded");
     
     // Unique ID prefix to avoid conflicts 
@@ -71,6 +72,14 @@
           </div>
         `;
         
+        console.log("Created UI elements with IDs:", Object.values(ids));
+        console.log("Elements exist check:", {
+          input: !!document.getElementById(ids.input),
+          button: !!document.getElementById(ids.button),
+          result: !!document.getElementById(ids.result),
+          output: !!document.getElementById(ids.output)
+        });
+
         // Find insertion point - try multiple options
         const insertionPoints = [
           document.querySelector('.problem-statement'),
@@ -102,6 +111,7 @@
         logError('Error creating UI:', error);
         return false;
       }
+
     }
     
     // Get element safely
@@ -164,6 +174,17 @@ async function validateTestCase() {
       
       // Process validation
       showStatus("Finding an accepted solution...");
+
+      // In your validateTestCase function after showing status
+      function showStatus(message, isError = false) {
+        const resultElement = getElement('result');
+        if (!resultElement) return false;
+        
+        resultElement.innerHTML = `<div class="${isError ? 'error' : 'loading'}">${message}</div>`;
+        resultElement.classList.add('show'); // Ensure this line is executing
+        console.log("Added 'show' class to result element"); // Add this debug line
+        return true;
+      }
       
       let submissionInfo, sourceCode, result;
       
@@ -178,40 +199,24 @@ async function validateTestCase() {
         // 3. Execute code
         showStatus(`Running solution with your input (Language: ${submissionInfo.programmingLanguage})...`);
         result = await executeCode(sourceCode, submissionInfo.language, testInput);
+
+        console.log("Received result:", result);
+        resultElement.innerHTML += `<div class="debug-info">Debug: Got result of type ${typeof result}</div>`;  
         
         // 4. Display result - MOVED INTO THIS TRY BLOCK
+        // In the section where you set the output (around line 211)
         if (outputElement) {
-            console.log("Received result:", result);
-            
-            // Check if there's an error flag or if the output contains error/warning messages
-            const isError = result.error || 
-                           (typeof result.output === 'string' && 
-                            (result.output.includes("error:") || 
-                             result.output.includes("warning:")));
-            
-            // Format the output with syntax highlighting if it contains errors/warnings
-            if (isError && typeof result.output === 'string') {
-              // Style the output to highlight errors and warnings
-              const formattedOutput = result.output
-                .replace(/error:/g, '<span class="error-text">error:</span>')
-                .replace(/warning:/g, '<span class="warning-text">warning:</span>')
-                .replace(/\n/g, '<br>');
-              
-              resultElement.innerHTML = `
-                <div class="validation-result ${isError ? 'with-errors' : ''}">
-                  <div class="result-header">${isError ? 'Compilation Errors/Warnings' : 'Execution Result'}</div>
-                  <div class="result-content">${formattedOutput}</div>
-                </div>
-              `;
-            } else {
-              // Normal output display
-              outputElement.textContent = typeof result === 'object' ? 
-                (result.output || JSON.stringify(result, null, 2)) : 
-                (result || 'No output returned');
-            }
-            
-            resultElement.classList.add('show');
-          } else {
+          console.log("Setting output text:", typeof result === 'object' ? 
+            (result.output || JSON.stringify(result, null, 2)) : 
+            (result || 'No output returned'));
+          
+          outputElement.textContent = typeof result === 'object' ? 
+            (result.output || JSON.stringify(result, null, 2)) : 
+            (result || 'No output returned');
+          
+          console.log("Output element text now:", outputElement.textContent);
+        } 
+        else {
           showStatus('UI error: Output element disappeared', true);
         }
       } catch (innerError) {

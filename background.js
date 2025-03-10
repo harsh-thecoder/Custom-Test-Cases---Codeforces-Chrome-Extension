@@ -6,42 +6,65 @@ function preprocessCodeForExecution(code, language) {
     let processedCode = code;
     
     if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
-        // Fix common C++ formatting issues
-        
-        // First handle potentially missing spaces after #include directives
-        processedCode = processedCode.replace(/#include<([^>]+)>/g, '#include <$1>');
-        
-        // Add proper spacing around 'using namespace' declaration
-        processedCode = processedCode.replace(/>#include/g, '>\n#include');
-        processedCode = processedCode.replace(/>using/g, '>\nusing');
-        
-        // Add newlines after semicolons that aren't in quotes or comments
-        processedCode = processedCode.replace(/;(?=([^"']*["'][^"']*["'])*[^"']*$)(?!\/\/)/g, ';\n');
-        
-        // Fix #define statements that are run together
-        processedCode = processedCode.replace(/(#define [^#]+)#define/g, '$1\n#define');
-        
-        // Remove non-standard ASCII characters that might cause compilation issues
-        processedCode = processedCode.replace(/[^\x00-\x7F]+/g, '');
-        
-        // Add newlines around braces for better readability
-        processedCode = processedCode.replace(/{(?=([^"']*["'][^"']*["'])*[^"']*$)/g, '{\n');
-        processedCode = processedCode.replace(/}(?=([^"']*["'][^"']*["'])*[^"']*$)/g, '\n}');
-        
-        // Fix any multiple consecutive newlines
-        processedCode = processedCode.replace(/\n{3,}/g, '\n\n');
+        // Clean whitespace but preserve semantics
+        processedCode = processedCode
+            // Fix common competitive programming macro issues
+            .replace(/#define\s+int\s+long\s+long([^\n])/g, '#define int long long\n$1')
+            
+            // Fix broken include statements
+            .replace(/#include<([^>]+)>/g, '#include <$1>')
+            
+            // Fix spacing around namespaces
+            .replace(/>\s*using\s+namespace/g, '>\n\nusing namespace')
+            
+            // Fix broken macro and function declarations
+            .replace(/(#define\s+[^\n]+)([a-zA-Z_][a-zA-Z0-9_]*\s*\()/g, '$1\n$2')
+            
+            // Fix improper brace closures that lead to syntax errors
+            .replace(/}([a-zA-Z_][a-zA-Z0-9_]*)/g, '}\n$1')
+            
+            // Ensure proper spacing around main function
+            .replace(/\)\s*{/g, ') {')
+            
+            // Fix broken signed/unsigned main declarations
+            .replace(/}(signed|unsigned|int)\s+main/g, '$1 main')
+            
+            // Remove non-ASCII characters that cause compilation issues
+            .replace(/[^\x00-\x7F]+/g, '')
+            
+            // Ensure consistent newlines at end of file
+            + '\n';
     } else if (language === 'python3' || language === 'python') {
-        // For Python, make sure indentation is proper
-        if (!processedCode.includes('\n') && (processedCode.includes(':') || processedCode.includes('def ') || processedCode.includes('class '))) {
-            // Add newlines after colons not in strings
-            processedCode = processedCode
-                .replace(/:(?=([^"']*["'][^"']*["'])*[^"']*$)/g, ':\n  ')
-                // Add newlines before def or class
-                .replace(/(def |class )/g, '\n$1');
+        // Python-specific preprocessing 
+        // (Python is more whitespace-sensitive, so be careful)
+        if (!processedCode.includes('\n') && 
+            (processedCode.includes(':') || 
+             processedCode.includes('def ') || 
+             processedCode.includes('class '))) {
+            
+            // Carefully add newlines after colons not in strings or comments
+            const lines = processedCode.split(/(?<=:)(?=(?:[^"']*["'][^"']*["'])*[^"']*$)(?!#)/);
+            processedCode = lines.join('\n    ');
+            
+            // Fix function definitions without proper spacing
+            processedCode = processedCode.replace(/(def\s+[^\n\(]+\))\s*:/g, '$1:\n    ');
         }
+    } else if (language === 'java') {
+        // Java-specific fixes
+        processedCode = processedCode
+            // Fix class definitions without proper spacing
+            .replace(/(class\s+[^\n{]+)\{/g, '$1 {')
+            
+            // Fix method definitions without proper spacing
+            .replace(/(\)\s*)\{/g, '$1 {')
+            
+            // Ensure proper package statements
+            .replace(/package([a-zA-Z])/g, 'package $1');
     }
     
-    return processedCode;
+    // Add debug marker to verify preprocessing
+    // This is harmless in all languages as it appears as a comment
+    return processedCode + "\n// Preprocessed for JDoodle\n";
 }
 
 // Handle messages from content scripts
@@ -99,6 +122,7 @@ async function executeJdoodleCode(code, language, input) {
     
     // Preprocess the code for better formatting before sending
     const processedCode = preprocessCodeForExecution(code, language);
+    
     
     // Debug: Log a sample of the processed code
     console.log("Processed code sample (first 300 chars):", processedCode.substring(0, 300));

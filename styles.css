@@ -74,3 +74,29 @@
   .loading {
     color: #5bc0de;
   }
+
+  #cf_validator_input, 
+[id^="cf_validator_"][id$="_input"] {
+  width: 100%;
+  min-height: 100px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-family: monospace;
+  resize: vertical;
+}
+
+#cf_validator_button,
+[id^="cf_validator_"][id$="_button"] {
+  background-color: #4a76a8;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+#cf_validator_button:hover,
+[id^="cf_validator_"][id$="_button"]:hover {
+  background-color: #3d6293;
+}
