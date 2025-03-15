@@ -50,16 +50,17 @@
   }
   
   .cf-test-validator-result {
-    border: 1px solid #ddd;
-    border-radius: 3px;
+    margin-top: 10px;
+    border: 1px solid #ccc;
     padding: 10px;
-    background-color: #f9f9f9;
+    max-height: 300px;
+    overflow-y: auto;
     display: none;
-  }
-  
-  .cf-test-validator-result.show {
+}
+
+.cf-test-validator-result.show {
     display: block;
-  }
+}
   
   .cf-test-validator-result pre {
     margin: 0;
@@ -99,4 +100,10 @@
 #cf_validator_button:hover,
 [id^="cf_validator_"][id$="_button"]:hover {
   background-color: #3d6293;
+}
+
+#cf_validator_output {
+  white-space: pre-wrap;
+  font-family: monospace;
+  word-break: break-all;
 }

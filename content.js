@@ -181,40 +181,25 @@ async function validateTestCase() {
       result = await executeCode(sourceCode, submissionInfo.language, testInput);
       
       // 4. Display result - MOVED INTO THIS TRY BLOCK
+      // In the validateTestCase function, modify the result display section:
       if (outputElement) {
-          console.log("Received result:", result);
-
-          // document.getElementById("output").innerText = result;
-          
-          // Check if there's an error flag or if the output contains error/warning messages
-          const isError = result.error || 
-                         (typeof result.output === 'string' && 
-                          (result.output.includes("error:") || 
-                           result.output.includes("warning:")));
-          
-          // Format the output with syntax highlighting if it contains errors/warnings
-          if (isError && typeof result.output === 'string') {
-            // Style the output to highlight errors and warnings
-            const formattedOutput = result.output
-              .replace(/error:/g, '<span class="error-text">error:</span>')
-              .replace(/warning:/g, '<span class="warning-text">warning:</span>')
-              .replace(/\n/g, '<br>');
-            
-            resultElement.innerHTML = `
-              <div class="validation-result ${isError ? 'with-errors' : ''}">
-                <div class="result-header">${isError ? 'Compilation Errors/Warnings' : 'Execution Result'}</div>
-                <div class="result-content">${formattedOutput}</div>
-              </div>
-            `;
-          } else {
-            // Normal output display
-            outputElement.textContent = typeof result === 'object' ? 
-              (result.output || JSON.stringify(result, null, 2)) : 
-              (result || 'No output returned');
-          }
-          
-          resultElement.classList.add('show');
+        console.log("Received result:", result);
+        
+        // Check if result is a string or an object
+        if (typeof result === 'string') {
+            // Direct string output
+            outputElement.textContent = result;
+        } else if (typeof result === 'object') {
+            // If it's an object with output property
+            outputElement.textContent = result.output || JSON.stringify(result, null, 2);
         } else {
+            // Fallback for any other type
+            outputElement.textContent = String(result || 'No output returned');
+        }
+        
+        // Make sure the result container is visible
+        resultElement.classList.add('show');
+      } else {
         showStatus('UI error: Output element disappeared', true);
       }
     } catch (innerError) {

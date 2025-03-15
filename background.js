@@ -79,9 +79,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         executeJdoodleCode(request.code, request.language, request.input)
             .then(result => {
                 console.log("JDoodle execution result:", result);
+                // In background.js, when sending simple results
+                if (typeof result !== 'object') {
+                    sendResponse({success: true, data: {output: result}}); 
+                } else {
+                    sendResponse({success: true, data: result});
+                }
                 sendResponse({success: true, data: result});
             })
             .catch(error => {
+                // In background.js, when sending simple results
+                if (typeof result !== 'object') {
+                    sendResponse({success: true, data: {output: result}}); 
+                } else {
+                    sendResponse({success: true, data: result});
+                }
                 console.error("JDoodle execution error:", error);
                 sendResponse({
                     success: false, 
@@ -125,8 +137,8 @@ async function executeJdoodleCode(code, language, input) {
     console.log("Processed code sample (first 300 chars):", processedCode.substring(0, 300));
     
     const jdoodleEndpoint = 'https://api.jdoodle.com/v1/execute';
-    const clientId = 'f5813c60373beca24a2ebab22dfd746'; 
-    const clientSecret = '4f7bfffa4f7f289857bc2b27c48dc1307ff13fd48a5a79511bc8225c75c38009';
+    const clientId = '6371ffaea2318fa1252dad9359d3ac1b'; 
+    const clientSecret = 'ca6540546cd25a26514fa79eefe9ab9a61b46680fa5b7c196d461dfa5550c395';
     
     // Prepare request body
     const requestBody = JSON.stringify({
