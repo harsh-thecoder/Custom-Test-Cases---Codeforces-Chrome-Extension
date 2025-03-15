@@ -31,22 +31,94 @@ function preprocessCodeForExecution(code, language) {
             
             // Ensure consistent newlines at end of file
             + '\n';
-    } else if (language === 'python3' || language === 'python') {
-        // Python-specific preprocessing 
-        // (Python is more whitespace-sensitive, so be careful)
-        if (!processedCode.includes('\n') && 
-            (processedCode.includes(':') || 
-             processedCode.includes('def ') || 
-             processedCode.includes('class '))) {
-            
-            // Carefully add newlines after colons not in strings or comments
-            const lines = processedCode.split(/(?<=:)(?=(?:[^"']*["'][^"']*["'])*[^"']*$)(?!#)/);
-            processedCode = lines.join('\n    ');
-            
-            // Fix function definitions without proper spacing
-            processedCode = processedCode.replace(/(def\s+[^\n\(]+\))\s*:/g, '$1:\n    ');
+    }  else   if (language === 'python3' || language === 'python') {
+        console.log("Original Python code length:", code.length);
+        
+        // If code is empty or only whitespace, provide valid Python code
+        if (!processedCode.trim()) {
+            console.log("Empty code detected, adding default Python code");
+            return "print('No code provided or empty code detected')\n";
         }
-    } else if (language === 'java') {
+        
+        // Check for unbalanced parentheses, brackets, quotes
+        let openParens = 0, openBrackets = 0, openBraces = 0;
+        let inSingleQuote = false, inDoubleQuote = false;
+        let escaped = false;
+        
+        for (let i = 0; i < processedCode.length; i++) {
+            const c = processedCode[i];
+            
+            // Skip characters inside string literals
+            if (!escaped) {
+                if (c === '\\') {
+                    escaped = true;
+                    continue;
+                }
+                
+                if (!inSingleQuote && !inDoubleQuote) {
+                    if (c === '(') openParens++;
+                    else if (c === ')') openParens--;
+                    else if (c === '[') openBrackets++;
+                    else if (c === ']') openBrackets--;
+                    else if (c === '{') openBraces++;
+                    else if (c === '}') openBraces--;
+                    else if (c === "'") inSingleQuote = true;
+                    else if (c === '"') inDoubleQuote = true;
+                } else {
+                    if (inSingleQuote && c === "'") inSingleQuote = false;
+                    else if (inDoubleQuote && c === '"') inDoubleQuote = false;
+                }
+            } else {
+                escaped = false;
+            }
+        }
+        
+        // Fix unbalanced symbols
+        if (openParens > 0) processedCode += ')'.repeat(openParens);
+        if (openBrackets > 0) processedCode += ']'.repeat(openBrackets);
+        if (openBraces > 0) processedCode += '}'.repeat(openBraces);
+        
+        // Check for lines ending with colon that have no indented block
+        const lines = processedCode.split('\n');
+        let newLines = [];
+        let expectIndent = false;
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            newLines.push(line);
+            
+            // Check if this line requires indentation on the next line
+            const trimmedLine = line.trim();
+            if (trimmedLine && trimmedLine.endsWith(':')) {
+                expectIndent = true;
+            } else if (trimmedLine) {
+                expectIndent = false;
+            }
+            
+            // Check if we've reached the end and still expect indentation
+            if (expectIndent && i === lines.length - 1) {
+                newLines.push('    pass  # Added missing indented block');
+            }
+        }
+        
+        processedCode = newLines.join('\n');
+        
+        // Make sure there's at least one valid Python statement
+        if (!processedCode.includes('print') && 
+            !processedCode.includes('def ') && 
+            !processedCode.includes('class ')) {
+            processedCode += "\nprint('Code executed')\n";
+        }
+        
+        console.log("Processed Python code:", processedCode);
+        return processedCode + "\n# End of processed code\n";
+    }
+    
+    // For other languages, use the existing preprocessing
+    // [rest of your existing preprocessing code]
+    
+    // Add debug marker with language-appropriate comment
+      else if (language === 'java') {
         // Java-specific fixes
         processedCode = processedCode
             // Fix class definitions without proper spacing
@@ -86,6 +158,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({success: true, data: result});
                 }
                 sendResponse({success: true, data: result});
+                // In executeJdoodleCode function
             })
             .catch(error => {
                 // In background.js, when sending simple results
