@@ -195,167 +195,207 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true; // Required for async sendResponse
     }
 });
+
+function preprocessCodeForExecution(code, language) {
+    if (language === "cpp" || language === "cpp17") {
+        // Fix #include <bits/stdc++.h> issues
+        code = code.replace(/#include\s*<bits\.stdc\+\+\.h>/g, "#include <bits/stdc++.h>\n");
+
+        // Ensure macros are correctly formatted
+        code = code.replace(/(#define\s+\w+\s*\(.*?\))(\S)/g, "$1\n$2");
+        code = code.replace(/#define\s+(\w+)\(([^)]*)\)([^#\n]*)#endif/g, "#define $1($2) $3\n#endif");
+
+        // Remove incorrectly placed `#endif`
+        code = code.replace(/#endif[^\n]*\n/g, "#endif\n");
+
+        // Replace problematic macros like Fr(i,a,b) and Fr_(i,a)
+        code = code.replace(/\bFr\s*\((\w+),(\w+),(\w+)\)/g, "for(int $1=$2; $1<=$3; $1++)");
+        code = code.replace(/\bFr_\s*\((\w+)\)/g, "for(auto $1 : a)");
+
+        // Ensure main function signature is correct
+        code = code.replace(/signed\s+main\s*\(/g, "int main(");
+
+        // Fix missing semicolons after statements
+        code = code.replace(/(\breturn\b[^;\n]*)\n/g, "$1;\n");
+
+        // Fix misplaced comments that may break compilation
+        code = code.replace(/\/\/([^\n]*);/g, "/*$1*/;");
+
+        // Add missing return statement in main()
+        if (!code.includes("return 0;") && code.includes("int main(")) {
+            code = code.replace(/(int main\s*\(.*\)\s*{)/, "$1\n    return 0;");
+        }
+
+        // Ensure braces are balanced
+        let openBraces = (code.match(/{/g) || []).length;
+        let closeBraces = (code.match(/}/g) || []).length;
+        if (openBraces > closeBraces) {
+            let missingBraces = openBraces - closeBraces;
+            let insertPosition = code.lastIndexOf("return 0;");
+            if (insertPosition !== -1) {
+                code = code.slice(0, insertPosition) + "}".repeat(missingBraces) + "\n" + code.slice(insertPosition);
+            } else {
+                code += "\n}".repeat(missingBraces);
+            }
+        }
+
+        // Fix indentation (replace multiple spaces with a single space)
+        code = code.replace(/[ ]{2,}/g, " ");
+    }
+
+    if (language === "python") {
+        // Convert tabs to spaces (4 spaces per tab)
+        code = code.replace(/\t/g, "    ");
+
+        // Ensure missing colons in control structures
+        code = code.replace(/\b(if|elif|else|for|while|def|class|try|except|finally)\s*\((.*?)\)\s*(?!:)/g, "$1 ($2):");
+
+        // Fix missing 'self' in instance methods
+        code = code.replace(/def\s+(\w+)\s*\((?!self)([^)]*)\)/g, "def $1(self, $2)");
+
+        // Remove unnecessary semicolons at end of lines
+        code = code.replace(/;\s*$/gm, "");
+
+        // Ensure blank line before function and class definitions
+        code = code.replace(/(\n\s*)(def|class)\s/g, "\n\n$1$2 ");
+
+        // Add `if __name__ == "__main__":` if missing
+        if (!code.includes("if __name__ == \"__main__\":")) {
+            code += "\n\nif __name__ == \"__main__\":\n    main()";
+        }
+    }
+
+    return code;
+}
+
   
-// Function to execute code with JDoodle
-// Function to execute code with JDoodle
-// Update this function in your background.js file
 async function executeJdoodleCode(code, language, input) {
     console.log(`Executing ${language} code with JDoodle`);
-    
-    // Preprocess the code for better formatting before sending
+
+    if (!code || !code.trim()) {
+        return {
+            output: "No code provided or empty code detected.",
+            error: true
+        };
+    }
+
     const processedCode = preprocessCodeForExecution(code, language);
-    
-    
-    // Debug: Log a sample of the processed code
+
     console.log("Processed code sample (first 300 chars):", processedCode.substring(0, 300));
-    
-    const jdoodleEndpoint = 'https://api.jdoodle.com/v1/execute';
-    const clientId = '6371ffaea2318fa1252dad9359d3ac1b'; 
-    const clientSecret = 'ca6540546cd25a26514fa79eefe9ab9a61b46680fa5b7c196d461dfa5550c395';
-    
-    // Prepare request body
+
+    const jdoodleEndpoint = "https://api.jdoodle.com/v1/execute";
+    const clientId = "6371ffaea2318fa1252dad9359d3ac1b";  
+    const clientSecret = "ca6540546cd25a26514fa79eefe9ab9a61b46680fa5b7c196d461dfa5550c395";  
+
     const requestBody = JSON.stringify({
-        clientId, 
-        clientSecret, 
+        clientId,
+        clientSecret,
         script: processedCode,
-        language, 
-        versionIndex: "0", 
+        language,
+        versionIndex: "0",
         stdin: input
     });
-    
+
     try {
-        console.log("Sending request to JDoodle API");
-        
-        // Try with fetch first
-        try {
-            const response = await fetch(jdoodleEndpoint, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: requestBody
-            });
-            
-            console.log("JDoodle API response status:", response.status);
-            
-            // Handle different status codes
-            if (response.status === 500) {
-                console.error("JDoodle returned 500 error");
-                return { 
-                    output: "The code execution service returned an error (500). This may be due to:\n" +
-                            "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input",
-                    error: true 
-                };
-            }
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error("JDoodle error response:", errorText);
-                return { 
-                    output: `Code execution service error (${response.status}): ${errorText}`,
-                    error: true 
-                };
-            }
-            
-            const data = await response.json();
-            
-            console.log("JDoodle raw response:", JSON.stringify(data));
-            
-            // Make sure the 'output' field exists before returning
-            if (!data.output && data.statusCode !== 200) {
-                console.error("JDoodle execution failed:", data);
-                return { 
-                    output: "Error: JDoodle execution failed. Status code: " + (data.statusCode || "unknown"),
-                    error: true 
-                };
-            }
-            
-            // Compile errors should be displayed but marked as errors
-            if (data.output && (data.output.includes("error:") || data.output.includes("warning:"))) {
-                data.error = true;
-            }
-            
-            // Ensure there's always an output property
-            if (!data.output) {
-              data.output = "No output returned from code execution service";
-            }
-            
-            return data;
-            
-        } catch (fetchError) {
-            console.error("Fetch error:", fetchError);
-             // If fetch fails, try with XMLHttpRequest as a fallback
-             return new Promise((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open('POST', jdoodleEndpoint, true);
-                xhr.setRequestHeader('Content-Type', 'application/json');
-                
-                xhr.onload = function() {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        try {
-                            const data = JSON.parse(xhr.responseText);
-                            
-                            console.log("JDoodle raw response (XHR):", JSON.stringify(data));
-                            
-                            // Make sure the 'output' field exists before returning
-                            if (!data.output && data.statusCode !== 200) {
-                              resolve({ 
-                                  output: "Error: JDoodle execution failed. Status code: " + (data.statusCode || "unknown"),
-                                  error: true 
-                              });
-                              return;
-                            }
-                            
-                            // Compile errors should be displayed but marked as errors
-                            if (data.output && (data.output.includes("error:") || data.output.includes("warning:"))) {
-                                data.error = true;
-                            }
-                            
-                            // Ensure there's always an output property
-                            if (!data.output) {
-                              data.output = "No output returned from code execution service";
-                            }
-                            
-                            resolve(data);
-                        } catch (parseError) {
-                            resolve({ 
-                                output: `Error parsing response: ${xhr.responseText.substring(0, 100)}...`,
-                                error: true 
-                            });
-                        }
-                    } else if (xhr.status === 500) {
-                        resolve({ 
-                            output: "The code execution service returned an error (500). This may be due to:\n" +
-                                    "- API usage limits\n- Service temporarily unavailable\n- Invalid code or input",
-                            error: true 
-                        });
-                    } else {
-                        resolve({ 
-                            output: `Code execution service error (${xhr.status}): ${xhr.responseText}`,
-                            error: true 
-                        });
-                    }
-                };
-                
-                xhr.onerror = function() {
-                    resolve({ 
-                        output: "Network error connecting to code execution service. " +
-                                "This might be due to CORS restrictions or network connectivity issues.",
-                        error: true 
-                    });
-                };
-                
-                xhr.send(requestBody);
-            });
+        const response = await fetch(jdoodleEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            return {
+                output: `Error (${response.status}): ${errorText}`,
+                error: true
+            };
         }
+
+        const data = await response.json();
+
+        if (!data.output && data.statusCode !== 200) {
+            return {
+                output: `Execution failed. Status code: ${data.statusCode || "unknown"}`,
+                error: true
+            };
+        }
+
+        let formattedOutput = `Output (${language}):\n${data.output}`;
+
+        if (data.output.includes("error:") || data.output.includes("warning:")) {
+            return {
+                output: formattedOutput,
+                error: true
+            };
+        }
+
+        return {
+            output: formattedOutput,
+            error: false
+        };
     } catch (error) {
-        console.error("Execution error:", error);
-        return { 
-            output: `Network or parsing error: ${error.message}\n` +
-                    "This might be due to:\n- Network connectivity issues\n" +
-                    "- API rate limits\n- Invalid API credentials",
-            error: true 
+        return {
+            output: "Network error connecting to JDoodle API.",
+            error: true
         };
     }
 }
+
+
+
+
+// Function to send code execution request
+async function executeCode(processedCode, language, input) {
+    const jdoodleEndpoint = "https://api.jdoodle.com/v1/execute";
+
+    // Store credentials securely (move to environment variables in a real app)
+    const clientId = "6371ffaea2318fa1252dad9359d3ac1b";
+    const clientSecret = "ca6540546cd25a26514fa79eefe9ab9a61b46680fa5b7c196d461dfa5550c395";
+
+    const requestBody = JSON.stringify({
+        clientId,
+        clientSecret,
+        script: processedCode,
+        language,
+        versionIndex: "0",
+        stdin: input
+    });
+
+    console.log("Sending request to JDoodle API...");
+
+    try {
+        const response = await fetch(jdoodleEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: requestBody
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            return { output: `Error (${response.status}): ${errorText}`, error: true };
+        }
+
+        const data = await response.json();
+        console.log("JDoodle API Response:", data);
+
+        if (!data.output) {
+            return { output: `Execution failed. Status code: ${data.statusCode || "unknown"}`, error: true };
+        }
+
+        let formattedOutput = `Output (${language}):\n${data.output}`;
+
+        // Mark errors
+        if (data.output.includes("error:") || data.output.includes("warning:")) {
+            return { output: formattedOutput, error: true };
+        }
+
+        return { output: formattedOutput, error: false };
+    } catch (error) {
+        console.error("Fetch error:", error);
+        return { output: "Network error connecting to JDoodle API.", error: true };
+    }
+}
+
   
 // Improved function to fetch source code from a submission
 async function fetchSubmissionCode(contestId, submissionId) {
