@@ -37,21 +37,33 @@ async function loadConfig() {
 // Load config when the extension starts
 loadConfig();
 // Handle messages from content script
+// In your background.js, modify the message handler
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[CF Validator] Message received in background script:', request.action);
-  
-  if (request.action === 'executeCode') {
-    executeCodeWithJDoodle(request.code, request.language, request.input)
-      .then(result => {
-        console.log('[CF Validator] Code executed successfully:', result);
-        sendResponse({ success: true, data: result });
-      })
-      .catch(error => {
-        console.error('[CF Validator] Error executing code:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-    return true; // Keep the messaging channel open for async response
-  }
+    console.log('[CF Validator] Message received in background script:', request.action);
+    
+    if (request.action === 'executeCode') {
+      // Use a Promise chain to handle the entire flow
+      preprocessCodeWithOpenAI(request.code, request.language, request.input)
+        .then(processedCode => {
+          // Instead of sending an early response, pass along the processed code
+          return executeCodeWithJDoodle(processedCode, request.language, request.input)
+            .then(result => {
+              // Send a complete response once everything is done
+              sendResponse({ 
+                success: true, 
+                data: result,
+                debug: true, 
+                processedCode: processedCode
+              });
+            });
+        })
+        .catch(error => {
+          console.error('[CF Validator] Error in execution chain:', error);
+          sendResponse({ success: false, error: error.message });
+        });
+      
+      return true; // Keep the messaging channel open for async response
+    }
 });
 
 // Execute code using JDoodle API
@@ -116,107 +128,184 @@ async function executeCodeWithJDoodle(code, language, input) {
 
 // Preprocess code using OpenAI API
 async function preprocessCodeWithOpenAI(code, language, input) {
-  console.log('[CF Validator] Preprocessing code with OpenAI for language:', language);
-  
-  // Create language-specific instructions for OpenAI
-  let systemPrompt = `You are a code optimization assistant specialized in ${language} programming. 
-Your task is to preprocess the following code to ensure it runs correctly on an online judge system.
-
-For Python, ensure proper input handling and output flushing with sys.stdout.flush().
-For Java, make sure the main class is named 'Main'.
-For C++:
-  - IMPORTANT: Remove or comment out any #include statements with local file paths (like "E:\\C++\\app_debug.cpp" or any path with backslashes or drive letters)
-  - Replace these with appropriate standard library includes if needed
-  - Handle any includes and namespace declarations properly.
-
-Return ONLY the optimized code without explanations or markdown formatting.`;
-  
-  // Include sample input if provided
-  let userPrompt = `Preprocess the following ${language} code for execution:
-  
-  ${code}`;
-  
-  if (input && input.trim()) {
-    userPrompt += `\n\nThe code will be tested with this input:
+    console.log('[CF Validator] Preprocessing code with OpenAI for language:', language);
     
-    ${input}`;
-  }
+    // Create an even more robust system prompt with stronger emphasis on syntax correctness
+    let systemPrompt = `You are a code simplification expert specialized in competitive programming, particularly for Codeforces problems in ${language}.
+  Your task is to convert the given code into a MINIMAL, CLEAN, and SYNTACTICALLY CORRECT version that will run correctly on an online judge system.
   
-  try {
-    const response = await fetch(OPENAI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENAI_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: userPrompt
-          }
-        ],
-        temperature: 0.2, // Lower temperature for more deterministic results
-        max_tokens: 4096
-      })
-    });
+  ABSOLUTE REQUIREMENTS (These must be followed precisely):
+  1. ELIMINATE ALL DEBUG CALLS - Remove any function calls containing 'debug' completely
+  2. Remove ALL debugging headers, includes, and macros
+  3. Remove ALL #ifndef ONLINE_JUDGE sections and their contents completely
+  4. Remove any code that exists SOLELY for debugging purposes
+  5. ENSURE THE CODE IS SYNTACTICALLY CORRECT - No empty preprocessor directives, no syntax errors
+  6. Convert template code and competitive programming boilerplate to minimal essential code
+  7. Preserve the EXACT algorithm logic and solution approach
+  
+  SIMPLIFICATIONS TO MAKE:
+  - Keep only necessary header includes (replace <bits/stdc++.h> with specific needed headers)
+  - Remove macros and typedefs that aren't used in the solution
+  - Remove empty preprocessor directives completely
+  - Ensure all preprocessor directives are complete and valid
+  - Simplify complex template constructs while ensuring correctness
+  
+  IMPORTANT: Double-check the code for syntax errors before returning it. The code MUST compile without errors.
+  
+  Return ONLY the clean, minimal code without any explanations, comments, or markdown formatting.`;
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[CF Validator] OpenAI API error:', errorData);
-      // Fallback to original code if OpenAI fails
-      console.log('[CF Validator] Falling back to original code preprocessing');
-      return fallbackPreprocessCode(code, language);
+    let userPrompt = `Convert this ${language} Codeforces solution to a minimal, clean, and syntactically correct version suitable for an online judge:
+    
+  ${code}
+  
+  CRITICAL: Make sure there are no syntax errors, empty preprocessor directives, or other issues that would prevent compilation.`;
+    
+    if (input && input.trim()) {
+      userPrompt += `\n\nThe code will be tested with this input:
+      
+  ${input}`;
     }
     
-    const result = await response.json();
-    const processedCode = result.choices[0].message.content.trim();
-    
-    console.log('[CF Validator] OpenAI preprocessing complete');
-    
-    return processedCode;
-  } catch (error) {
-    console.error('[CF Validator] Error in OpenAI preprocessing:', error);
-    // Fallback to original preprocessing if OpenAI call fails
-    console.log('[CF Validator] Falling back to original code preprocessing due to error');
-    return fallbackPreprocessCode(code, language);
-  }
+    try {
+      console.log('[CF Validator] Sending request to OpenAI...');
+      
+      const response = await fetch(OPENAI_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: systemPrompt
+            },
+            {
+              role: "user",
+              content: userPrompt
+            }
+          ],
+          temperature: 0.1 // Low temperature for deterministic results
+        })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[CF Validator] OpenAI API error:', errorData);
+        console.log('[CF Validator] Falling back to enhanced manual preprocessing');
+        return enhancedManualPreprocessing(code, language);
+      }
+      
+      const result = await response.json();
+      const processedCode = result.choices[0].message.content.trim();
+      
+      // Log the processed code from OpenAI
+      console.log('[CF Validator] Code returned from OpenAI:');
+      console.log(processedCode);
+      
+      // Enhanced check for any issues
+      const hasDebugElements = /\bdebug\s*\(|\bdebug\b|debug\.h/.test(processedCode);
+      const hasEmptyDirectives = /#define\s*$|#include\s*$|#ifdef\s*$|#ifndef\s*$|#endif\s*$/.test(processedCode);
+      
+      console.log(`[CF Validator] Issues found: Debug elements: ${hasDebugElements}, Empty directives: ${hasEmptyDirectives}`);
+      
+      // If issues are detected, apply enhanced manual preprocessing
+      if (hasDebugElements || hasEmptyDirectives) {
+        console.log('[CF Validator] Applying enhanced manual preprocessing');
+        return enhancedManualPreprocessing(processedCode, language);
+      }
+      
+      return processedCode;
+    } catch (error) {
+      console.error('[CF Validator] Error in OpenAI preprocessing:', error);
+      console.log('[CF Validator] Falling back to enhanced manual preprocessing due to error');
+      return enhancedManualPreprocessing(code, language);
+    }
 }
 
+// Enhanced manual preprocessing function
+function enhancedManualPreprocessing(code, language) {
+    console.log('[CF Validator] Performing enhanced manual preprocessing');
+    
+    // Remove any debug function calls completely
+    code = code.replace(/\bdebug\s*\([^)]*\);?/g, '');
+    
+    // Remove debug header includes
+    code = code.replace(/#include\s+["<]debug\.h[">].*$/gm, '');
+    
+    // Remove #ifndef ONLINE_JUDGE sections
+    code = code.replace(/#ifndef\s+ONLINE_JUDGE[\s\S]*?#else([\s\S]*?)#endif/gm, '$1');
+    code = code.replace(/#ifndef\s+ONLINE_JUDGE[\s\S]*?#endif/gm, '');
+    
+    // Remove debug define macros
+    code = code.replace(/#define\s+debug\s*\(.*\).*$/gm, '');
+    
+    // Remove empty preprocessor directives
+    code = code.replace(/#define\s*$/gm, '');
+    code = code.replace(/#include\s*$/gm, '');
+    code = code.replace(/#ifdef\s*$/gm, '');
+    code = code.replace(/#ifndef\s*$/gm, '');
+    code = code.replace(/#endif\s*$/gm, '');
+    
+    // Replace bits/stdc++.h with common essential headers for C++
+    if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
+      const hasBitsStdc = /#include\s+<bits\/stdc\+\+\.h>/.test(code);
+      if (hasBitsStdc) {
+        code = code.replace(/#include\s+<bits\/stdc\+\+\.h>/, 
+          '#include <iostream>\n#include <vector>\n#include <algorithm>\n#include <string>\n#include <cmath>\n#include <map>\n#include <set>');
+      }
+    }
+    
+    console.log('[CF Validator] Enhanced manual preprocessing complete');
+    return code;
+}
 // Fallback preprocessing function (original implementation)
 function fallbackPreprocessCode(code, language) {
-  console.log('[CF Validator] Using fallback preprocessing for language:', language);
-  
-  if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
-    // Remove local file includes
-    code = code.replace(/#include\s+["<]([A-Z]:\\|\.\\|\\\\).*[">]/g, '// $&');
-  }
-  // Handle specific language preprocessing here
-  if (language === 'python3') {
-    // For Python, make sure it flushes output
-    if (!code.includes('import sys') && !code.includes('sys.stdout.flush')) {
-      return "import sys\n" + code + "\nsys.stdout.flush()";
+    console.log('[CF Validator] Using fallback preprocessing for language:', language);
+    
+    if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
+      // Remove local file includes with paths
+      code = code.replace(/#include\s+["<]([A-Z]:\\|\.\\|\\\\).*[">]/g, '// $&');
+      
+      // Also comment out potentially custom headers that aren't standard
+      const standardHeaders = ['iostream', 'vector', 'string', 'algorithm', 'map', 'set', 'unordered_map', 
+                             'unordered_set', 'queue', 'stack', 'deque', 'list', 'cmath', 'numeric',
+                             'utility', 'cstdio', 'cstdlib', 'cstring', 'cctype', 'cassert', 'functional'];
+      
+      // Look for includes that don't match standard patterns
+      code = code.replace(/#include\s+["<]([\w\.]+)[">]/g, (match, header) => {
+        // If it's a standard header, keep it
+        if (standardHeaders.includes(header) || header.endsWith('.h') && standardHeaders.includes(header.slice(0, -2))) {
+          return match;
+        }
+        // Otherwise comment it out
+        return `// ${match} // Removed by CF Validator`;
+      });
     }
-  }
-  
-  // For Java, we might need to modify the class name to Main
-  if (language === 'java') {
-    // Check if the code has a class definition that's not Main
-    const classMatch = code.match(/\bclass\s+(\w+)\b/);
-    if (classMatch && classMatch[1] !== 'Main') {
-      // Replace the class name with Main
-      code = code.replace(/\bclass\s+(\w+)\b/, 'class Main');
+    
+    // Rest of the function remains the same...
+    // Handle specific language preprocessing here
+    if (language === 'python3') {
+      // For Python, make sure it flushes output
+      if (!code.includes('import sys') && !code.includes('sys.stdout.flush')) {
+        return "import sys\n" + code + "\nsys.stdout.flush()";
+      }
     }
+    
+    // For Java, we might need to modify the class name to Main
+    if (language === 'java') {
+      // Check if the code has a class definition that's not Main
+      const classMatch = code.match(/\bclass\s+(\w+)\b/);
+      if (classMatch && classMatch[1] !== 'Main') {
+        // Replace the class name with Main
+        code = code.replace(/\bclass\s+(\w+)\b/, 'class Main');
+      }
+    }
+    
+    return code;
   }
-  
-  return code;
-}
-
 // Map our language codes to JDoodle's language codes
 function mapToJDoodleLanguage(language) {
   const mapping = {

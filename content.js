@@ -181,7 +181,7 @@
         }
       }
       
-      // Get problem info - IMPORTANT: Do this before trying to use contestId & problemId
+      // Get problem info
       let { contestId, problemId } = getProblemInfo();
       
       if (!contestId || !problemId) {
@@ -200,53 +200,52 @@
         return;
       }
       
+      // Make sure the result container is visible
+      resultElement.classList.add('show');
+      
       // Process validation
       showStatus("Finding an accepted solution...");
-      
-      let submissionInfo, sourceCode, result;
       
       try {
         // 1. Get submission ID
         console.log('[CF Validator] Getting accepted submission info');
-        submissionInfo = await getAcceptedSubmissionInfo(contestId, problemId);
+        const submissionInfo = await getAcceptedSubmissionInfo(contestId, problemId);
         console.log('[CF Validator] Submission info:', submissionInfo);
         
         // 2. Get source code
         showStatus(`Fetching solution code (Submission #${submissionInfo.submissionId})...`);
         console.log('[CF Validator] Fetching source code for submission:', submissionInfo.submissionId);
-        sourceCode = await getSubmissionSourceCode(contestId, submissionInfo.submissionId);
+        const sourceCode = await getSubmissionSourceCode(contestId, submissionInfo.submissionId);
         console.log('[CF Validator] Source code fetched, length:', sourceCode.length);
         
         // 3. Execute code
         showStatus(`Running solution with your input (Language: ${submissionInfo.programmingLanguage})...`);
         console.log('[CF Validator] Executing code with language:', submissionInfo.language);
-        result = await executeCode(sourceCode, submissionInfo.language, testInput);
+        const result = await executeCode(sourceCode, submissionInfo.language, testInput);
         console.log('[CF Validator] Execution result:', result);
         
-        // 4. Display result
-        if (outputElement) {
-          console.log('[CF Validator] Displaying result');
-          // Check if result is a string or an object
-          if (typeof result === 'string') {
-              // Direct string output
-              outputElement.textContent = result;
-              console.log('[CF Validator] Result is a string, length:', result.length);
-          } else if (typeof result === 'object') {
-              // If it's an object with output property
-              outputElement.textContent = result.output || JSON.stringify(result, null, 2);
-              console.log('[CF Validator] Result is an object:', result);
-          } else {
-              // Fallback for any other type
-              outputElement.textContent = String(result || 'No output returned');
-              console.log('[CF Validator] Result is of type:', typeof result);
-          }
-          
-          // Make sure the result container is visible
-          resultElement.classList.add('show');
+        // 4. Display result - Clear status message first
+        resultElement.innerHTML = ''; // Clear previous status message
+
+        // Recreate output element
+        const newOutputElement = document.createElement('pre');
+        newOutputElement.id = ids.output;
+        resultElement.appendChild(newOutputElement);
+
+        // Display the result - with trimming to fix the line space issue
+        if (typeof result === 'string') {
+          // Trim the result to remove leading/trailing whitespace
+          newOutputElement.textContent = result.trimStart();
+          console.log('[CF Validator] Result is a string, length:', result.length);
+        } else if (typeof result === 'object') {
+          // If it's an object, trim the output property if it exists
+          newOutputElement.textContent = result.output ? result.output.trimStart() : JSON.stringify(result, null, 2);
+          console.log('[CF Validator] Result is an object:', result);
         } else {
-          console.error('[CF Validator] Output element disappeared');
-          showStatus('UI error: Output element disappeared', true);
+          newOutputElement.textContent = String(result || 'No output returned').trimStart();
+          console.log('[CF Validator] Result is of type:', typeof result);
         }
+        
       } catch (innerError) {
         // Handle errors from each step
         console.error('[CF Validator] Inner execution error:', innerError);
@@ -256,6 +255,26 @@
       logError('Validation error:', error);
       showStatus(error.message || 'Unknown error occurred', true);
     }
+  }
+  
+
+  function showStatus(message, isError = false) {
+    console.log(`[CF Validator] Status update: ${message}`, isError ? '(Error)' : '');
+    const resultElement = getElement('result');
+    if (!resultElement) return false;
+    
+    // Clear previous content
+    resultElement.innerHTML = '';
+    
+    // Create status message
+    const statusDiv = document.createElement('div');
+    statusDiv.className = isError ? 'error' : 'loading';
+    statusDiv.textContent = message;
+    resultElement.appendChild(statusDiv);
+    
+    // Make sure it's visible
+    resultElement.classList.add('show');
+    return true;
   }
   
   // Get submission info (API first, fallback to page scraping)
@@ -430,6 +449,15 @@ async function getSubmissionSourceCode(contestId, submissionId) {
 // Execute code via chrome extension messaging to JDoodle API
 async function executeCode(code, language, input) {
   console.log('[CF Validator] Sending message to execute code:', { language, codeLength: code.length });
+  
+  // Show loading message
+  const resultElement = getElement('result');
+  const outputElement = getElement('output');
+  if (resultElement && outputElement) {
+    resultElement.classList.add('show');
+    outputElement.textContent = 'Executing code...';
+  }
+  
   return new Promise((resolve, reject) => {
     chrome.runtime.sendMessage(
       {
@@ -438,7 +466,7 @@ async function executeCode(code, language, input) {
         language,
         input
       },
-      response => {
+      function(response) {
         console.log('[CF Validator] Execution response received:', response ? 'success: ' + response.success : 'null');
         
         if (chrome.runtime.lastError) {
@@ -449,7 +477,8 @@ async function executeCode(code, language, input) {
         
         if (response?.success) {
           console.log('[CF Validator] Execution successful, output:', response.data);
-          resolve(response.data.output || response.data);
+          // Add null check to handle cases where response.data might be undefined
+          resolve(response.data?.output || response.data || 'No output received');
         } else {
           console.error('[CF Validator] Execution error:', response?.error);
           reject(new Error(response?.error || 'Unknown error executing code'));
