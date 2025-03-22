@@ -325,7 +325,7 @@
   // Fallback: scrape status page
   async function getAcceptedSubmissionFromStatusPage(contestId, problemId) {
     console.log('[CF Validator] Scraping status page for submissions');
-    const statusUrl = `https://codeforces.com/contest/${contestId}/status/problem/${problemId}`;
+    const statusUrl = `https://codeforces.com/contest/${contestId}/status/${problemId}`;
     console.log('[CF Validator] Status page URL:', statusUrl);
     
     const response = await fetch(statusUrl);
