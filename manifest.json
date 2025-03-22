@@ -8,6 +8,12 @@
     "storage",
     "scripting"
   ],
+  "web_accessible_resources": [
+    {
+      "resources": ["config.json"],
+      "matches": ["<all_urls>"]
+    }
+  ],
   "host_permissions": [
     "https://codeforces.com/*",
     "https://api.jdoodle.com/*"

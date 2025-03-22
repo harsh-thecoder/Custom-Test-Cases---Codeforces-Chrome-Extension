@@ -1,15 +1,41 @@
 // background.js
 console.log('[CF Validator] Background script initialized');
 
-// JDoodle API credentials
-const JDOODLE_CLIENT_ID = 'f5813c60373beca24a2ebab22dfd746';
-const JDOODLE_CLIENT_SECRET = '4f7bfffa4f7f289857bc2b27c48dc1307ff13fd48a5a79511bc8225c75c38009';
-const JDOODLE_API_URL = 'https://api.jdoodle.com/v1/execute';
+// Initialize global variables to hold API credentials
+let JDOODLE_CLIENT_ID = '';
+let JDOODLE_CLIENT_SECRET = '';
+let JDOODLE_API_URL = 'https://api.jdoodle.com/v1/execute';
+let OPENAI_API_KEY = '';
+let OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
-// OpenAI API configuration
-const OPENAI_API_KEY = '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';
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+// Load configuration on extension initialization
+async function loadConfig() {
+  try {
+    console.log('[CF Validator] Loading configuration...');
+    
+    // Fetch the config file
+    const response = await fetch(chrome.runtime.getURL('config.json'));
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load config: ${response.status} ${response.statusText}`);
+    }
+    
+    const config = await response.json();
+    console.log('[CF Validator] Configuration loaded successfully');
+    
+    // Set the credentials from config
+    JDOODLE_CLIENT_ID = config.jdoodle.clientId;
+    JDOODLE_CLIENT_SECRET = config.jdoodle.clientSecret;
+    OPENAI_API_KEY = config.openai.apiKey;
+    
+    console.log('[CF Validator] API credentials configured');
+  } catch (error) {
+    console.error('[CF Validator] Error loading configuration:', error);
+  }
+}
 
+// Load config when the extension starts
+loadConfig();
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('[CF Validator] Message received in background script:', request.action);
