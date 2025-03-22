@@ -2,9 +2,13 @@
 console.log('[CF Validator] Background script initialized');
 
 // JDoodle API credentials
-const JDOODLE_CLIENT_ID = '6371ffaea2318fa1252dad9359d3ac1b';
-const JDOODLE_CLIENT_SECRET = 'ca6540546cd25a26514fa79eefe9ab9a61b46680fa5b7c196d461dfa5550c395';
+const JDOODLE_CLIENT_ID = 'f5813c60373beca24a2ebab22dfd746';
+const JDOODLE_CLIENT_SECRET = '4f7bfffa4f7f289857bc2b27c48dc1307ff13fd48a5a79511bc8225c75c38009';
 const JDOODLE_API_URL = 'https://api.jdoodle.com/v1/execute';
+
+// OpenAI API configuration
+const OPENAI_API_KEY = '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';
+const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -28,26 +32,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function executeCodeWithJDoodle(code, language, input) {
   console.log('[CF Validator] Executing code with JDoodle:', { language, codeLength: code.length });
   
-  // Preprocess code based on language if needed
-  const processedCode = preprocessCode(code, language);
-  
-  // Prepare request payload
-  const payload = {
-    clientId: JDOODLE_CLIENT_ID,
-    clientSecret: JDOODLE_CLIENT_SECRET,
-    script: processedCode,
-    language: mapToJDoodleLanguage(language),
-    versionIndex: getJDoodleVersionIndex(language),
-    stdin: input
-  };
-  
-  console.log('[CF Validator] JDoodle request payload:', { 
-    language: payload.language, 
-    versionIndex: payload.versionIndex,
-    inputLength: input.length
-  });
-  
+  // Preprocess code using OpenAI
   try {
+    const processedCode = await preprocessCodeWithOpenAI(code, language, input);
+    
+    // Prepare request payload
+    const payload = {
+      clientId: JDOODLE_CLIENT_ID,
+      clientSecret: JDOODLE_CLIENT_SECRET,
+      script: processedCode,
+      language: mapToJDoodleLanguage(language),
+      versionIndex: getJDoodleVersionIndex(language),
+      stdin: input
+    };
+    
+    console.log('[CF Validator] JDoodle request payload:', { 
+      language: payload.language, 
+      versionIndex: payload.versionIndex,
+      inputLength: input.length
+    });
+    
     const response = await fetch(JDOODLE_API_URL, {
       method: 'POST',
       headers: {
@@ -84,10 +88,88 @@ async function executeCodeWithJDoodle(code, language, input) {
   }
 }
 
-// Preprocess code if needed based on language
-function preprocessCode(code, language) {
-  console.log('[CF Validator] Preprocessing code for language:', language);
+// Preprocess code using OpenAI API
+async function preprocessCodeWithOpenAI(code, language, input) {
+  console.log('[CF Validator] Preprocessing code with OpenAI for language:', language);
   
+  // Create language-specific instructions for OpenAI
+  let systemPrompt = `You are a code optimization assistant specialized in ${language} programming. 
+Your task is to preprocess the following code to ensure it runs correctly on an online judge system.
+
+For Python, ensure proper input handling and output flushing with sys.stdout.flush().
+For Java, make sure the main class is named 'Main'.
+For C++:
+  - IMPORTANT: Remove or comment out any #include statements with local file paths (like "E:\\C++\\app_debug.cpp" or any path with backslashes or drive letters)
+  - Replace these with appropriate standard library includes if needed
+  - Handle any includes and namespace declarations properly.
+
+Return ONLY the optimized code without explanations or markdown formatting.`;
+  
+  // Include sample input if provided
+  let userPrompt = `Preprocess the following ${language} code for execution:
+  
+  ${code}`;
+  
+  if (input && input.trim()) {
+    userPrompt += `\n\nThe code will be tested with this input:
+    
+    ${input}`;
+  }
+  
+  try {
+    const response = await fetch(OPENAI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: userPrompt
+          }
+        ],
+        temperature: 0.2, // Lower temperature for more deterministic results
+        max_tokens: 4096
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('[CF Validator] OpenAI API error:', errorData);
+      // Fallback to original code if OpenAI fails
+      console.log('[CF Validator] Falling back to original code preprocessing');
+      return fallbackPreprocessCode(code, language);
+    }
+    
+    const result = await response.json();
+    const processedCode = result.choices[0].message.content.trim();
+    
+    console.log('[CF Validator] OpenAI preprocessing complete');
+    
+    return processedCode;
+  } catch (error) {
+    console.error('[CF Validator] Error in OpenAI preprocessing:', error);
+    // Fallback to original preprocessing if OpenAI call fails
+    console.log('[CF Validator] Falling back to original code preprocessing due to error');
+    return fallbackPreprocessCode(code, language);
+  }
+}
+
+// Fallback preprocessing function (original implementation)
+function fallbackPreprocessCode(code, language) {
+  console.log('[CF Validator] Using fallback preprocessing for language:', language);
+  
+  if (language === 'cpp17' || language === 'cpp14' || language === 'c') {
+    // Remove local file includes
+    code = code.replace(/#include\s+["<]([A-Z]:\\|\.\\|\\\\).*[">]/g, '// $&');
+  }
   // Handle specific language preprocessing here
   if (language === 'python3') {
     // For Python, make sure it flushes output
