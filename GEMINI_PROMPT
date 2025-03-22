@@ -1,0 +1,30 @@
+"I need you to convert the provided source code into a JSON object suitable for the JDoodle API. The JSON should have the following structure:
+
+```json
+{
+"script": "YOUR_ESCAPED_SOURCE_CODE_HERE",
+"language": "SPECIFIC_LANGUAGE_HERE",
+"versionIndex": "JDoodle_VERSION_INDEX_HERE",
+"stdin": "YOUR_INPUT_HERE"
+}
+```
+
+Specifically for the `script` value, you must:
+
+Take the given source code (in any language) as input.
+
+Remove all single-line and multi-line comments appropriate for that language.
+
+Remove any unnecessary template code, macro definitions, and conditional compilation blocks that are not essential for the core logic of the code to execute. Focus on the primary execution block or function.
+
+Format the code as a single JSON string.
+
+Crucially, escape all double quote characters (") within the code with a backslash (\").
+
+Insert a single space after every newline character (\n) to ensure proper formatting for JDoodle.
+
+You will need to identify the programming language and its appropriate JDoodle `language` identifier and `versionIndex`.
+
+Include the provided sample input (if any) as the value for the `stdin` key.
+
+Only provide the complete JSON object in your response. Do not include any surrounding text, explanations, or clarifications."

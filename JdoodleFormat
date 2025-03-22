@@ -1,0 +1,11 @@
+Link : "https://api.jdoodle.com/v1/execute"
+Content-Type
+application/json
+{
+    "clientId": "f5813c60373beca24a2ebab22dfd746",
+    "clientSecret": "4f7bfffa4f7f289857bc2b27c48dc1307ff13fd48a5a79511bc8225c75c38009",
+    "script": "#include <iostream> \n#include <vector> \n#include <cstring> \n#include <queue> \n#include <set> \n#include <iomanip> \n#include <ios> \n#include <string> \n#include <algorithm> \n#include <map> \n#include <math.h> \n#include <numeric> \nusing namespace std; \n#define ll long long \n#define rep(i, m, n) for (ll i = m; i < n; i++) \n#define fastio() ios_base::sync_with_stdio(false); cin.tie(nullptr) \n#define all(a) a.begin(), a.end() \n#define allR(a) a.rbegin(), a.rend() \n#define vll vector<ll> \n#define pll pair<ll,ll> \n#define vvll vector<vll> \ninline void py() { cout << \"YES\" << endl; } \ninline void pn() { cout << \"NO\" << endl; } \nvoid pv(vector<ll> &v) { for (auto &i : v) cout << i << \" \"; cout << endl; } \nvll nC2; \nvoid solve() { \n ll k;cin>>k; \n vll v; \n ll ans = 0; \n while(k){ \n ll it = (upper_bound(all(nC2),k)-nC2.begin())-1; \n ll x = nC2[it]; \n v.push_back(it+1); \n k-=x; \n ans += it+1; \n } \n cout<<ans<<endl; \n ll x = 0 , y = 0; \n for(auto &i:v){ \n rep(j,0,i){ \n cout<<x<<\" \"<<y<<endl; \n y++; \n } \n x++; \n } \n} \nint main() { \n fastio(); \n ll t; \n cin >> t; \n rep(i,1,501){ \n nC2.push_back((i*(i-1))/2); \n } \n while (t--) { \n solve(); \n } \n return 0; \n}",
+    "language": "cpp17",
+    "versionIndex": "0",
+    "stdin": "1\n2"
+}
