@@ -5,8 +5,8 @@ console.log('[CF Validator] Background script initialized');
 let JDOODLE_CLIENT_ID = '';
 let JDOODLE_CLIENT_SECRET = '';
 let JDOODLE_API_URL = 'https://api.jdoodle.com/v1/execute';
-let OPENAI_API_KEY = '';
-let OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
+let GEMINI_API_KEY = '';
+let GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
 // Load configuration on extension initialization
 async function loadConfig() {
@@ -26,7 +26,7 @@ async function loadConfig() {
     // Set the credentials from config
     JDOODLE_CLIENT_ID = config.jdoodle.clientId;
     JDOODLE_CLIENT_SECRET = config.jdoodle.clientSecret;
-    OPENAI_API_KEY = config.openai.apiKey;
+    GEMINI_API_KEY = config.gemini.apiKey;
     
     console.log('[CF Validator] API credentials configured');
   } catch (error) {
@@ -43,7 +43,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     if (request.action === 'executeCode') {
       // Use a Promise chain to handle the entire flow
-      preprocessCodeWithOpenAI(request.code, request.language, request.input)
+      preprocessCodeWithGemini(request.code, request.language, request.input)
         .then(processedCode => {
           // Instead of sending an early response, pass along the processed code
           return executeCodeWithJDoodle(processedCode, request.language, request.input)
@@ -70,15 +70,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 async function executeCodeWithJDoodle(code, language, input) {
   console.log('[CF Validator] Executing code with JDoodle:', { language, codeLength: code.length });
   
-  // Preprocess code using OpenAI
   try {
-    const processedCode = await preprocessCodeWithOpenAI(code, language, input);
-    
     // Prepare request payload
     const payload = {
       clientId: JDOODLE_CLIENT_ID,
       clientSecret: JDOODLE_CLIENT_SECRET,
-      script: processedCode,
+      script: code,
       language: mapToJDoodleLanguage(language),
       versionIndex: getJDoodleVersionIndex(language),
       stdin: input
@@ -126,15 +123,17 @@ async function executeCodeWithJDoodle(code, language, input) {
   }
 }
 
-// Preprocess code using OpenAI API
-async function preprocessCodeWithOpenAI(code, language, input) {
-    console.log('[CF Validator] Preprocessing code with OpenAI for language:', language);
+// Preprocess code using Gemini API
+async function preprocessCodeWithGemini(code, language, input) {
+    console.log('[CF Validator] Preprocessing code with Gemini for language:', language);
     
-    // Create an even more robust system prompt with stronger emphasis on syntax correctness
-    let systemPrompt = `You are a code simplification expert specialized in competitive programming, particularly for Codeforces problems in ${language}.
+    // Create a system prompt with emphasis on syntax correctness
+    let prompt = `Convert the code given by me in c++ and then further send the language as c++. You are a code simplification expert specialized in competitive programming, particularly for Codeforces problems in ${language}.
   Your task is to convert the given code into a MINIMAL, CLEAN, and SYNTACTICALLY CORRECT version that will run correctly on an online judge system.
   
   ABSOLUTE REQUIREMENTS (These must be followed precisely):
+  First of all try to remove the template and just keep the part which is used in the code and remove that extra part
+  Now convert it in simpler format by yourself as you know the best and simple format for all types of code  
   1. ELIMINATE ALL DEBUG CALLS - Remove any function calls containing 'debug' completely
   2. Remove ALL debugging headers, includes, and macros
   3. Remove ALL #ifndef ONLINE_JUDGE sections and their contents completely
@@ -142,6 +141,7 @@ async function preprocessCodeWithOpenAI(code, language, input) {
   5. ENSURE THE CODE IS SYNTACTICALLY CORRECT - No empty preprocessor directives, no syntax errors
   6. Convert template code and competitive programming boilerplate to minimal essential code
   7. Preserve the EXACT algorithm logic and solution approach
+  
   
   SIMPLIFICATIONS TO MAKE:
   - Keep only necessary header includes (replace <bits/stdc++.h> with specific needed headers)
@@ -152,57 +152,59 @@ async function preprocessCodeWithOpenAI(code, language, input) {
   
   IMPORTANT: Double-check the code for syntax errors before returning it. The code MUST compile without errors.
   
-  Return ONLY the clean, minimal code without any explanations, comments, or markdown formatting.`;
-    
-    let userPrompt = `Convert this ${language} Codeforces solution to a minimal, clean, and syntactically correct version suitable for an online judge:
-    
-  ${code}
+  Return ONLY the clean, minimal code without any explanations, comments, or markdown formatting.
   
-  CRITICAL: Make sure there are no syntax errors, empty preprocessor directives, or other issues that would prevent compilation.`;
+  Here is the ${language} Codeforces solution to convert to a minimal, clean, and syntactically correct version suitable for an online judge:
+  
+  ${code}`;
     
     if (input && input.trim()) {
-      userPrompt += `\n\nThe code will be tested with this input:
+      prompt += `\n\nThe code will be tested with this input:
       
   ${input}`;
     }
     
     try {
-      console.log('[CF Validator] Sending request to OpenAI...');
+      console.log('[CF Validator] Sending request to Gemini...');
       
-      const response = await fetch(OPENAI_API_URL, {
+      const apiUrlWithKey = `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`;
+      
+      const response = await fetch(apiUrlWithKey, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${OPENAI_API_KEY}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
+          contents: [
             {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: userPrompt
+              parts: [
+                { text: prompt }
+              ]
             }
           ],
-          temperature: 0.1 // Low temperature for deterministic results
+          generationConfig: {
+            temperature: 0.1,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 8192
+          }
         })
       });
       
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('[CF Validator] OpenAI API error:', errorData);
+        console.error('[CF Validator] Gemini API error:', errorData);
         console.log('[CF Validator] Falling back to enhanced manual preprocessing');
         return enhancedManualPreprocessing(code, language);
       }
       
       const result = await response.json();
-      const processedCode = result.choices[0].message.content.trim();
       
-      // Log the processed code from OpenAI
-      console.log('[CF Validator] Code returned from OpenAI:');
+      // Extract the text from Gemini's response
+      const processedCode = result.candidates[0].content.parts[0].text.trim();
+      
+      // Log the processed code from Gemini
+      console.log('[CF Validator] Code returned from Gemini:');
       console.log(processedCode);
       
       // Enhanced check for any issues
@@ -219,7 +221,7 @@ async function preprocessCodeWithOpenAI(code, language, input) {
       
       return processedCode;
     } catch (error) {
-      console.error('[CF Validator] Error in OpenAI preprocessing:', error);
+      console.error('[CF Validator] Error in Gemini preprocessing:', error);
       console.log('[CF Validator] Falling back to enhanced manual preprocessing due to error');
       return enhancedManualPreprocessing(code, language);
     }
@@ -261,6 +263,7 @@ function enhancedManualPreprocessing(code, language) {
     console.log('[CF Validator] Enhanced manual preprocessing complete');
     return code;
 }
+
 // Fallback preprocessing function (original implementation)
 function fallbackPreprocessCode(code, language) {
     console.log('[CF Validator] Using fallback preprocessing for language:', language);
@@ -285,7 +288,6 @@ function fallbackPreprocessCode(code, language) {
       });
     }
     
-    // Rest of the function remains the same...
     // Handle specific language preprocessing here
     if (language === 'python3') {
       // For Python, make sure it flushes output
@@ -305,7 +307,8 @@ function fallbackPreprocessCode(code, language) {
     }
     
     return code;
-  }
+}
+
 // Map our language codes to JDoodle's language codes
 function mapToJDoodleLanguage(language) {
   const mapping = {

@@ -107,3 +107,30 @@
   font-family: monospace;
   word-break: break-all;
 }
+
+
+/* Add these CSS rules to your existing CSS */
+#cf_validator_output,
+[id^="cf_validator_"][id$="_output"] {
+  white-space: pre-wrap;
+  font-family: monospace;
+  word-break: break-all;
+  margin-top: 4px; /* Small, controlled top margin */
+  padding-top: 0;
+  line-height: 1.2;
+  display: block;
+}
+
+/* This ensures the containing pre element has controlled spacing */
+.cf-test-validator-result pre {
+  margin: 0;
+  margin-top: 4px; /* Small, controlled top margin */
+  padding: 0;
+  white-space: pre-wrap;
+  font-family: monospace;
+}
+
+/* For the containing div - keep some padding */
+.cf-test-validator-result {
+  padding: 10px;
+}
