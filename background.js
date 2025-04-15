@@ -123,7 +123,7 @@ async function executeCodeWithJDoodle(code, language, input) {
   }
 }
 
-// Preprocess code using Gemini API
+// Not sure about GEMINI API although
 async function preprocessCodeWithGemini(code, language, input) {
     console.log('[CF Validator] Preprocessing code with Gemini for language:', language);
     
