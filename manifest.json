@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Test My Case",
+  "version": "1.0",
+  "description": "Run custom test cases for Codeforces problems using accepted solutions",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting",
+    "https://generativelanguage.googleapis.com/"
+  ],
+  "host_permissions": [
+    "https://codeforces.com/*",
+    "https://api.jdoodle.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://codeforces.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "",
+    "default_icon": "/images/icon.png"
+  },
+ "icons": {
+  "16": "images/icon.png",
+  "48": "images/icon.png",
+  "128": "images/icon.png"  
+}
+
+}

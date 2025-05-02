@@ -1,0 +1,72 @@
+.cf-test-case-solver {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+  }
+  
+  .solver-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  
+  .solver-header h3 {
+    margin: 0;
+    color: #4a76a8;
+  }
+  
+  #toggleSolver {
+    background-color: #4a76a8;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  
+  #toggleSolver:hover {
+    background-color: #3d6293;
+  }
+  
+  .solver-body {
+    margin-top: 10px;
+  }
+  
+  #customInput {
+    width: 100%;
+    min-height: 100px;
+    margin-bottom: 10px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-family: monospace;
+    resize: vertical;
+  }
+  
+  #runCustomTest {
+    background-color: #5cb85c;
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  
+  #runCustomTest:hover {
+    background-color: #4cae4c;
+  }
+  
+  .solver-result {
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-family: monospace;
+    white-space: pre-wrap;
+    max-height: 300px;
+    overflow-y: auto;
+  }
